@@ -1,5 +1,6 @@
 import streamlit as st
 from agent import generate_quotation
+#Author: Suhail Jamaldeen
 
 # Initialize session state for history if not already set
 if 'question_history' not in st.session_state:

@@ -2,8 +2,8 @@
 
 # Core imports
 import streamlit as st
-
-#Author: Suhail Jamaldeen
+from scripts.browser_console import console_log
+from agent import generate_quotation
 
 # Initialize session state for history if not already set
 if 'question_history' not in st.session_state:

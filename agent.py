@@ -29,17 +29,8 @@ retriever = AzureAISearchRetriever(
 )
 
 # Debug: Test retriever
-print("Testing retriever...")
-try:
-    test_docs = retriever.invoke("Known hotels")  # Test query
-    if test_docs:
-        print(f"Retrieved {len(test_docs)} documents:")
-        for doc in test_docs:
-            print(f"- {doc.page_content[:200]}...")
-    else:
-        print("No documents retrieved. Check index or query.")
-except Exception as e:
-    print(f"Retriever error: {str(e)}")
+print("Inside the agent.py")
+
 
 retrieval_tool = create_retriever_tool(
     retriever,

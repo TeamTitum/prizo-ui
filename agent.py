@@ -6,6 +6,8 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain.prompts import PromptTemplate
 
+from scripts.browser_console import console_log
+
 load_dotenv()
 
 # Initialize Azure OpenAI LLM with stop parameter explicitly set to None
@@ -22,7 +24,7 @@ llm = AzureChatOpenAI(
 retriever = AzureAISearchRetriever(
     content_key="content",
     top_k=3,
-    index_name="index-prizo",
+    index_name=os.getenv('AZURE_SEARCH_INDEX_NAME'),
     service_name=os.getenv('AZURE_SEARCH_SERVICE_NAME'),
     api_key=os.getenv('AZURE_SEARCH_KEY'),
     api_version="2024-05-01-preview"
@@ -82,6 +84,7 @@ def generate_quotation(query):
     try:
         response = agent_executor.invoke({"input": query})
         print("Bot:", response['output'])
+        console_log(response['output'], level="info")
         return response['output']
     except Exception as e:
         return f"Prizo AI encountered an issue: {str(e)}. Please try rephrasing your question."

@@ -1,64 +1,110 @@
-#Author: Suhail Jamaldeen
+# app.py – Prizo AI Agent UI (Streamlit)
+# Author: Suhail Jamaldeen
+# Updated: 2025-11-07
 
-# Core imports
 import streamlit as st
+import os
+import time
 from scripts.browser_console import console_log
 from agent import generate_quotation
 
-# Initialize session state for history if not already set
-if 'question_history' not in st.session_state:
+# ──────────────────────────────────────────────────────────────
+# Session State
+# ──────────────────────────────────────────────────────────────
+if "question_history" not in st.session_state:
     st.session_state.question_history = []
 
+if "last_response" not in st.session_state:
+    st.session_state.last_response = ""
 
-# Load external CSS (if present) so styles live in `assets/styles.css`
+# ──────────────────────────────────────────────────────────────
+# Load CSS
+# ──────────────────────────────────────────────────────────────
 css_path = "assets/styles.css"
 try:
-    with open(css_path, "r") as _f:
-        st.markdown(f"<style>{_f.read()}</style>", unsafe_allow_html=True)
-except Exception:
-    # If CSS can't be read, proceed without it
+    with open(css_path, "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+except FileNotFoundError:
     pass
 
-# Display logo and smaller header centered using a 3-column layout
-console_log("text_to_log")
+# ──────────────────────────────────────────────────────────────
+# Header
+# ──────────────────────────────────────────────────────────────
+console_log("App started")
 cols = st.columns([1, 2, 1])
 with cols[1]:
     try:
         st.image("assets/arabiers.png", width=200)
-    except Exception:
-        # If the image can't be shown, continue silently
+    except:
         pass
-
-    # Use the external CSS class for the header
     st.markdown("<div class='prizo-header'>Prizo AI Agent</div>", unsafe_allow_html=True)
-# Input field for user question
-st.write("Ask about hotel rooms, availability, pricing, amenities, or meals.")
 
-# Input field for user question
-question = st.text_input("Your hotel question (e.g., 'Tell me what we can see in Yala National Park?')")
+st.markdown("Ask about **rates, supplements, transfers, comparisons, or full quotations**.")
 
-# Button to submit question
-if st.button("Ask Prizo AI"):
-    if question:
-        with st.spinner("Prizo AI is checking documents..."):
-            response = generate_quotation(question)
-            # Store question and response in history
-            st.session_state.question_history.append({"question": question, "response": response})
-            # Display the latest response
-            st.markdown("### Prizo AI Response")
-            st.markdown(response)
+# ──────────────────────────────────────────────────────────────
+# Input
+# ──────────────────────────────────────────────────────────────
+question = st.text_input(
+    "Your question",
+    placeholder="e.g., Compare 5-star hotels in Kandy for July",
+    key="question_input"
+)
+
+# ──────────────────────────────────────────────────────────────
+# Submit
+# ──────────────────────────────────────────────────────────────
+if st.button("Ask Prizo AI", type="primary"):
+    if question.strip():
+        with st.spinner("Prizo is searching documents and calculating..."):
+            try:
+                response = generate_quotation(question.strip())
+                st.session_state.last_response = response
+                st.session_state.question_history.append({
+                    "question": question,
+                    "response": response,
+                    "timestamp": time.strftime("%H:%M")
+                })
+            except Exception as e:
+                st.error(f"Agent error: {e}")
     else:
         st.warning("Please enter a question.")
 
-# Button to clear history
+# ──────────────────────────────────────────────────────────────
+# Display Response
+# ──────────────────────────────────────────────────────────────
+if st.session_state.last_response:
+    st.markdown("### Prizo AI Response")
+    st.markdown(st.session_state.last_response, unsafe_allow_html=True)
+
+    # PDF Download
+    pdf_path = "quote.pdf"
+    if os.path.exists(pdf_path):
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Download PDF Quotation",
+                data=f,
+                file_name=f"Prizo_Quote_{time.strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                type="secondary"
+            )
+
+    # Auto-scroll
+    st.markdown(
+        "<script>window.parent.document.querySelector('.main').scrollTop = document.body.scrollHeight;</script>",
+        unsafe_allow_html=True
+    )
+
+# ──────────────────────────────────────────────────────────────
+# History
+# ──────────────────────────────────────────────────────────────
 if st.button("Clear History"):
     st.session_state.question_history = []
-    st.success("History cleared!")
+    st.session_state.last_response = ""
+    st.rerun()
 
-# Display question history
 if st.session_state.question_history:
     st.markdown("### Question History")
-    for i, entry in enumerate(st.session_state.question_history):
-        with st.expander(f"Question {i+1}: {entry['question'][:50]}..."):
-            st.markdown(f"**Question**: {entry['question']}")
-            st.markdown(f"**Response**: {entry['response']}")
+    for i, entry in enumerate(reversed(st.session_state.question_history)):
+        with st.expander(f"Q{i+1}: {entry['question'][:60]}... • {entry['timestamp']}"):
+            st.markdown(f"**Q**: {entry['question']}")
+            st.markdown(f"**A**: {entry['response']}")

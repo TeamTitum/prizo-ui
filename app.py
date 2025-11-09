@@ -1,4 +1,4 @@
-# app.py – Prizo AI Agent UI (Streamlit)
+# app.py – Arabiers AI Agent UI (Streamlit)
 # Author: Suhail Jamaldeen
 # Updated: 2025-11-07
 
@@ -37,7 +37,7 @@ with cols[1]:
         st.image("assets/arabiers.png", width=200)
     except:
         pass
-    st.markdown("<div class='prizo-header'>Prizo AI Agent</div>", unsafe_allow_html=True)
+    st.markdown("<div class='arabiers-header'>Arabiers AI Agent</div>", unsafe_allow_html=True)
 
 st.markdown("Ask about **Sri Lanka tourism and hotes** Eg. Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board.")
 
@@ -53,9 +53,9 @@ question = st.text_input(
 # ──────────────────────────────────────────────────────────────
 # Submit
 # ──────────────────────────────────────────────────────────────
-if st.button("Ask Prizo AI", type="primary"):
+if st.button("Ask Arabiers AI", type="primary"):
     if question.strip():
-        with st.spinner("Prizo is searching documents and calculating..."):
+        with st.spinner("Arabiers AI is searching documents and calculating..."):
             try:
                 response = generate_quotation(question.strip())
                 st.session_state.last_response = response
@@ -73,7 +73,7 @@ if st.button("Ask Prizo AI", type="primary"):
 # Display Response
 # ──────────────────────────────────────────────────────────────
 if st.session_state.last_response:
-    st.markdown("### Prizo AI Response")
+    st.markdown("### Arabiers AI Response")
     st.markdown(st.session_state.last_response, unsafe_allow_html=True)
 
     # PDF Download
@@ -83,7 +83,7 @@ if st.session_state.last_response:
             st.download_button(
                 label="Download PDF Quotation",
                 data=f,
-                file_name=f"Prizo_Quote_{time.strftime('%Y%m%d_%H%M')}.pdf",
+                file_name=f"Arabiers_AI_Quote_{time.strftime('%Y%m%d_%H%M')}.pdf",
                 mime="application/pdf",
                 type="secondary"
             )

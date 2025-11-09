@@ -2,7 +2,10 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from langchain_community.retrievers import AzureAISearchRetriever
-from langchain.tools.retriever import create_retriever_tool
+# `create_retriever_tool` may not be available in all LangChain versions (Azure Web Apps
+# build sometimes has a different package version). Use `Tool` to wrap the retriever
+# directly which is compatible with a wider range of LangChain releases.
+from langchain.tools import Tool
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain.prompts import PromptTemplate
 
@@ -35,15 +38,43 @@ retriever = AzureAISearchRetriever(
 print("Inside the agent.py")
 console_log("Inside the agent.py", level="info")
 
-retrieval_tool = create_retriever_tool(
-    retriever,
-    "hotel_docs_retriever",
-    "Searches hotel documents for details like rooms, availability, meals, pricing, and amenities."
+def _retriever_tool_func(query: str) -> str:
+    """Run the retriever and return a short joined text result.
+
+    We intentionally return a plain string so the agent can observe the
+    retrieved content. Limit to the top-k results for brevity.
+    """
+    try:
+        docs = retriever.get_relevant_documents(query)
+    except AttributeError:
+        # Some retriever implementations expose `get_documents` or `retrieve` —
+        # try common alternatives for broader compatibility.
+        if hasattr(retriever, "get_documents"):
+            docs = retriever.get_documents(query)
+        elif hasattr(retriever, "retrieve"):
+            docs = retriever.retrieve(query)
+        else:
+            raise
+
+    # Take up to top_k results (AzureAISearchRetriever already respects top_k,
+    # but defensively limit here)
+    texts = []
+    for d in docs[:4]:
+        # Document objects typically have `page_content` or `content` attributes
+        text = getattr(d, "page_content", None) or getattr(d, "content", None) or str(d)
+        texts.append(text)
+    return "\n---\n".join(texts)
+
+
+retrieval_tool = Tool(
+    name="hotel_docs_retriever",
+    func=_retriever_tool_func,
+    description="Searches hotel documents for details like rooms, availability, meals, pricing, and amenities.",
 )
 
 # Define the ReAct prompt template
 prompt = PromptTemplate.from_template("""
-You are Prizo AI, a concise hotel and tourism expert.
+You are Arabiers AI Agent, a concise hotel and tourism expert.
 Answer the following questions as best you can.
 Use the hotel_docs_retriever tool to fetch information from the provided documents when needed.
 You have access to the following tools:
@@ -105,4 +136,4 @@ def generate_quotation(query):
         # response may not be defined here if invocation failed; log the exception
         console_log(str(e), level="error")
         print("Agent error:", e)
-        return f"Prizo AI encountered an issue: {str(e)}. Please try rephrasing your question."
+        return f"Arabiers AI Agent encountered an issue: {str(e)}. Please try rephrasing your question."

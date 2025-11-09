@@ -51,7 +51,7 @@ You have access to the following tools:
 {tools}
 Include the document reference if available. 
 Use the following format:
-
+You may answer general answers as well. 
 Question: the input question you must answer
 Thought: you should always think about what to do
 Action: the action to take, should be one of [{tool_names}]
@@ -65,6 +65,8 @@ Begin!
 
 Question: {input}
 Thought: {agent_scratchpad}
+
+If no tools are needed, write the Final Answer directly and do NOT emit any 'Action' or 'Action Input' lines.
 """)
 
 # Set up tools

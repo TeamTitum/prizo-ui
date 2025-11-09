@@ -1,5 +1,6 @@
 import json
 from typing import Any
+import json
 import streamlit as st
 
 
@@ -44,14 +45,30 @@ def file_to_console(path: str) -> None:
         content = f.read()
     send({"path": path, "content": content})
 
-def console_log(message: str, level: str = "log"):
+def console_log(message: Any, level: str = "log"):
     """
-    Print to browser console.
+    Print a Python object to the browser console.
+
+    Accepts any JSON-serializable object. This safely serializes the object
+    to JSON and emits a console.<level>(...) call so the browser shows the
+    structured object instead of failing when a non-string (e.g. dict)
+    is passed.
+
     level: 'log' | 'warn' | 'error' | 'info'
     """
+    try:
+        payload = json.dumps(message, ensure_ascii=False)
+    except Exception:
+        # Fallback: stringify the message
+        payload = json.dumps(str(message))
+
     script = f"""
     <script>
-    console.{level}("[STREAMLIT DEBUG] {message.replace('"', '\\"')}");
+    try {{
+        console.{level}({payload});
+    }} catch(e) {{
+        console.error('[STREAMLIT DEBUG] Failed to log payload', e);
+    }}
     </script>
     """
     st.components.v1.html(script, height=0, width=0)

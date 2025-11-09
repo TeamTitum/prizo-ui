@@ -39,14 +39,14 @@ with cols[1]:
         pass
     st.markdown("<div class='prizo-header'>Prizo AI Agent</div>", unsafe_allow_html=True)
 
-st.markdown("Ask about **rates, supplements, transfers, comparisons, or full quotations**.")
+st.markdown("Ask about **Sri Lanka tourism and hotes** Eg. Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board.")
 
 # ──────────────────────────────────────────────────────────────
 # Input
 # ──────────────────────────────────────────────────────────────
 question = st.text_input(
     "Your question",
-    placeholder="e.g., Compare 5-star hotels in Kandy for July",
+    placeholder="e.g., Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board",
     key="question_input"
 )
 

@@ -16,14 +16,15 @@ llm = AzureChatOpenAI(
     api_key=os.getenv('AZURE_OPENAI_API_KEY'),
     api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
     deployment_name=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
-    temperature=1,
+    temperature=0.9,
+    max_tokens=800,
    
 )
 
 # Initialize retriever synchronously
 retriever = AzureAISearchRetriever(
     content_key="content",
-    top_k=3,
+    top_k=4,
     index_name=os.getenv('AZURE_SEARCH_INDEX_NAME'),
     service_name=os.getenv('AZURE_SEARCH_SERVICE_NAME'),
     api_key=os.getenv('AZURE_SEARCH_KEY'),
@@ -32,7 +33,7 @@ retriever = AzureAISearchRetriever(
 
 # Debug: Test retriever
 print("Inside the agent.py")
-
+console_log("Inside the agent.py", level="info")
 
 retrieval_tool = create_retriever_tool(
     retriever,
@@ -42,7 +43,10 @@ retrieval_tool = create_retriever_tool(
 
 # Define the ReAct prompt template
 prompt = PromptTemplate.from_template("""
-Answer the following questions as best you can. You have access to the following tools:
+You are Prizo AI, a concise hotel and tourism expert.
+Answer the following questions as best you can.
+Use the hotel_docs_retriever tool to fetch information from the provided documents when needed.
+You have access to the following tools:
 
 {tools}
 Include the document reference if available. 
@@ -75,30 +79,28 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=True,  # Set to False if you don't want verbose output
     handle_parsing_errors=True,
-    max_iterations=20,  # Limit iterations to prevent infinite loops
-    max_execution_time=20  # Limit execution time (in seconds) to prevent hangs
+    # Limits were causing the agent to stop early in some queries. Increase
+    # these so longer-retrieval/chain runs can complete. Adjust as needed.
+    max_iterations=40,  # Limit iterations to prevent infinite loops
+    max_execution_time=120  # Limit execution time (in seconds) to prevent hangs
 )
 
 # Function to run agent
 def generate_quotation(query):
     try:
         response = agent_executor.invoke({"input": query})
-        print("Bot:", response['output'])
-        console_log(response['output'], level="info")
-        return response['output']
+        # response may be a dict or a string depending on agent implementation
+        console_log("response from agent_executor", level="info")
+        console_log(response, level="info")
+        # Normalize output
+        if isinstance(response, dict):
+            output = response.get("output") or response.get("output_text") or str(response)
+        else:
+            output = str(response)
+        print("Bot:", output)
+        return output
     except Exception as e:
+        # response may not be defined here if invocation failed; log the exception
+        console_log(str(e), level="error")
+        print("Agent error:", e)
         return f"Prizo AI encountered an issue: {str(e)}. Please try rephrasing your question."
-    
-# Interactive bot loop
-# print("Starting interactive bot. Type 'exit' to quit.")
-# while True:
-#     user_input = input("You: ")
-#     if user_input.lower() == 'exit':
-#         print("Exiting bot.")
-#         break
-#     try:
-#         response = agent_executor.invoke({"input": user_input})
-#         print("Bot:", response['output'])
-#     except Exception as e:
-#         print(f"Error during execution: {str(e)}")
-#         print("Please check your Azure OpenAI deployment or configuration.")

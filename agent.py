@@ -156,7 +156,7 @@ if _USE_CREATE_REACT:
         max_iterations=40,
         max_execution_time=120,
     )
-else:
+elif _USE_INITIALIZE:
     # initialize_agent returns an AgentExecutor-like object already
     # Use ZERO_SHOT_REACT_DESCRIPTION to approximate ReAct behavior.
     agent_executor = initialize_agent(
@@ -168,6 +168,24 @@ else:
         max_iterations=40,
         max_execution_time=120,
     )
+else:
+    # No agent factory available; run in fallback mode (agent_executor stays None)
+    agent_executor = None
+
+# Log which agent mode we're running in so deployment logs make the chosen path clear
+if _USE_CREATE_REACT:
+    _agent_mode = "create_react_agent"
+elif _USE_INITIALIZE:
+    _agent_mode = "initialize_agent"
+else:
+    _agent_mode = "fallback_retriever_llm"
+
+print(f"Agent mode: {_agent_mode}")
+try:
+    console_log(f"Agent mode: {_agent_mode}", level="info")
+except Exception:
+    # Best-effort logging; don't fail startup if console logging isn't available
+    pass
 
 # Determine whether we have a usable agent executor (some LangChain versions return
 # an AgentExecutor via initialize_agent directly). If `agent_executor` exists above,

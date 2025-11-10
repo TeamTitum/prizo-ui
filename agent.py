@@ -158,22 +158,79 @@ else:
         max_execution_time=120,
     )
 
-# Function to run agent
-def generate_quotation(query):
+# Determine whether we have a usable agent executor (some LangChain versions return
+# an AgentExecutor via initialize_agent directly). If `agent_executor` exists above,
+# we'll use it; otherwise fall back to a simple retrieval + LLM call.
+_USE_AGENT_EXECUTOR = 'agent_executor' in globals()
+
+
+def _get_docs_for_query(q: str, limit: int = 4):
     try:
-        response = agent_executor.invoke({"input": query})
-        # response may be a dict or a string depending on agent implementation
-        console_log("response from agent_executor", level="info")
-        console_log(response, level="info")
-        # Normalize output
-        if isinstance(response, dict):
-            output = response.get("output") or response.get("output_text") or str(response)
+        docs = retriever.get_relevant_documents(q)
+    except AttributeError:
+        if hasattr(retriever, "get_documents"):
+            docs = retriever.get_documents(q)
+        elif hasattr(retriever, "retrieve"):
+            docs = retriever.retrieve(q)
         else:
-            output = str(response)
-        print("Bot:", output)
+            raise
+    return docs[:limit]
+
+
+def generate_quotation(query: str) -> str:
+    """Run the agent if available; otherwise run a simple retrieve+LLM fallback.
+
+    The fallback gathers the top documents and asks the LLM to answer concisely
+    using those documents as context. This keeps functionality working even when
+    LangChain agent factories aren't available in the runtime.
+    """
+    if _USE_AGENT_EXECUTOR:
+        try:
+            response = agent_executor.invoke({"input": query})
+            console_log("response from agent_executor", level="info")
+            console_log(response, level="info")
+            if isinstance(response, dict):
+                output = response.get("output") or response.get("output_text") or str(response)
+            else:
+                output = str(response)
+            print("Bot:", output)
+            return output
+        except Exception as e:
+            console_log(str(e), level="error")
+            print("Agent error:", e)
+            return f"Arabiers AI Agent encountered an issue: {str(e)}. Please try rephrasing your question."
+
+    # Fallback: retrieve top documents and ask the LLM directly
+    try:
+        docs = _get_docs_for_query(query)
+        texts = []
+        for d in docs:
+            texts.append(getattr(d, 'page_content', None) or getattr(d, 'content', None) or str(d))
+        context = "\n---\n".join(texts) if texts else "(no documents found)"
+
+        prompt_text = (
+            "You are Arabiers AI Agent, a concise hotel and tourism expert. "
+            "Answer the user's question using the provided context from hotel documents. "
+            "If the information isn't in the documents, answer concisely from general knowledge.\n\n"
+            f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer concisely:"
+        )
+
+        # Use the LLM directly. Most LangChain LLM wrappers expose `predict`.
+        try:
+            output = llm.predict(prompt_text)
+        except Exception:
+            # Fall back to generate if predict isn't available
+            res = llm.generate([prompt_text])
+            # `generate` returns an LLMResult; try to extract text
+            try:
+                output = res.generations[0][0].text
+            except Exception:
+                output = str(res)
+
+        console_log(output, level="info")
+        print("Bot (fallback):", output)
         return output
     except Exception as e:
-        # response may not be defined here if invocation failed; log the exception
         console_log(str(e), level="error")
-        print("Agent error:", e)
+        print("Fallback error:", e)
         return f"Arabiers AI Agent encountered an issue: {str(e)}. Please try rephrasing your question."

@@ -31,7 +31,34 @@ except Exception:
         AgentExecutor = None
         initialize_agent = None
         AgentType = None
-from langchain.prompts import PromptTemplate
+# PromptTemplate: some LangChain builds don't expose `langchain.prompts`.
+# Try importing and fall back to a minimal local implementation that supports
+# the methods we use (from_template and simple formatting).
+try:
+    from langchain.prompts import PromptTemplate
+except Exception:
+    class PromptTemplate:
+        """Minimal fallback for LangChain's PromptTemplate.
+
+        Only implements `from_template` (class method) and `format` for
+        basic Python str.format-style substitution. This keeps the agent
+        prompt usage working in environments with older/newpatched LangChain
+        packages.
+        """
+
+        def __init__(self, template: str):
+            self.template = template
+
+        @classmethod
+        def from_template(cls, template: str):
+            return cls(template)
+
+        def format(self, **kwargs) -> str:
+            try:
+                return self.template.format(**kwargs)
+            except Exception:
+                # If formatting fails, return the raw template for robustness
+                return self.template
 
 from scripts.browser_console import console_log
 

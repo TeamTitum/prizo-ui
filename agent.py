@@ -61,6 +61,7 @@ except Exception:
                 return self.template
 
 from scripts.browser_console import console_log
+import asyncio
 
 # Print LangChain version to logs to help diagnosing runtime API differences
 try:
@@ -106,17 +107,28 @@ def _retriever_tool_func(query: str) -> str:
     We intentionally return a plain string so the agent can observe the
     retrieved content. Limit to the top-k results for brevity.
     """
-    try:
+    # Call retriever with broad compatibility: synchronous or async methods may
+    # be present depending on LangChain version. Try several common names.
+    if hasattr(retriever, "get_relevant_documents"):
         docs = retriever.get_relevant_documents(query)
-    except AttributeError:
-        # Some retriever implementations expose `get_documents` or `retrieve` —
-        # try common alternatives for broader compatibility.
-        if hasattr(retriever, "get_documents"):
-            docs = retriever.get_documents(query)
-        elif hasattr(retriever, "retrieve"):
-            docs = retriever.retrieve(query)
-        else:
-            raise
+    elif hasattr(retriever, "aget_relevant_documents"):
+        docs = asyncio.run(retriever.aget_relevant_documents(query))
+    elif hasattr(retriever, "get_documents"):
+        docs = retriever.get_documents(query)
+    elif hasattr(retriever, "aget_documents"):
+        docs = asyncio.run(retriever.aget_documents(query))
+    elif hasattr(retriever, "retrieve"):
+        docs = retriever.retrieve(query)
+    elif hasattr(retriever, "aretrieve"):
+        docs = asyncio.run(retriever.aretrieve(query))
+    else:
+        # If none of the common methods exist, raise a clear error to help
+        # diagnose the runtime API available in the deployed LangChain.
+        raise AttributeError(
+            "Retriever does not expose a compatible retrieval method. "
+            "Checked: get_relevant_documents, aget_relevant_documents, get_documents, "
+            "aget_documents, retrieve, aretrieve"
+        )
 
     # Take up to top_k results (AzureAISearchRetriever already respects top_k,
     # but defensively limit here)
@@ -232,15 +244,25 @@ _USE_AGENT_EXECUTOR = ('agent_executor' in globals()) and (globals().get('agent_
 
 
 def _get_docs_for_query(q: str, limit: int = 4):
-    try:
+    # Reuse the same compatibility logic as _retriever_tool_func.
+    if hasattr(retriever, "get_relevant_documents"):
         docs = retriever.get_relevant_documents(q)
-    except AttributeError:
-        if hasattr(retriever, "get_documents"):
-            docs = retriever.get_documents(q)
-        elif hasattr(retriever, "retrieve"):
-            docs = retriever.retrieve(q)
-        else:
-            raise
+    elif hasattr(retriever, "aget_relevant_documents"):
+        docs = asyncio.run(retriever.aget_relevant_documents(q))
+    elif hasattr(retriever, "get_documents"):
+        docs = retriever.get_documents(q)
+    elif hasattr(retriever, "aget_documents"):
+        docs = asyncio.run(retriever.aget_documents(q))
+    elif hasattr(retriever, "retrieve"):
+        docs = retriever.retrieve(q)
+    elif hasattr(retriever, "aretrieve"):
+        docs = asyncio.run(retriever.aretrieve(q))
+    else:
+        raise AttributeError(
+            "Retriever does not expose a compatible retrieval method. "
+            "Checked: get_relevant_documents, aget_relevant_documents, get_documents, "
+            "aget_documents, retrieve, aretrieve"
+        )
     return docs[:limit]
 
 

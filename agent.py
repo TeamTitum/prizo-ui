@@ -5,7 +5,13 @@ from langchain_community.retrievers import AzureAISearchRetriever
 # `create_retriever_tool` may not be available in all LangChain versions (Azure Web Apps
 # build sometimes has a different package version). Use `Tool` to wrap the retriever
 # directly which is compatible with a wider range of LangChain releases.
-from langchain.tools import Tool
+# Some LangChain releases don't expose a stable `Tool` class in the same place.
+# To be robust across versions, define a minimal duck-typed Tool-like wrapper
+# here and use it when the installed LangChain doesn't provide the class.
+try:
+    from langchain.tools import Tool  # type: ignore
+except Exception:
+    Tool = None
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain.prompts import PromptTemplate
 
@@ -66,11 +72,29 @@ def _retriever_tool_func(query: str) -> str:
     return "\n---\n".join(texts)
 
 
-retrieval_tool = Tool(
-    name="hotel_docs_retriever",
-    func=_retriever_tool_func,
-    description="Searches hotel documents for details like rooms, availability, meals, pricing, and amenities.",
-)
+if Tool is not None:
+    retrieval_tool = Tool(
+        name="hotel_docs_retriever",
+        func=_retriever_tool_func,
+        description="Searches hotel documents for details like rooms, availability, meals, pricing, and amenities.",
+    )
+else:
+    # Minimal duck-typed replacement for LangChain's Tool so older/newer
+    # LangChain builds that don't export Tool still work.
+    class SimpleTool:
+        def __init__(self, name, func, description=""):
+            self.name = name
+            self.func = func
+            self.description = description
+
+        def __call__(self, *args, **kwargs):
+            return self.func(*args, **kwargs)
+
+    retrieval_tool = SimpleTool(
+        name="hotel_docs_retriever",
+        func=_retriever_tool_func,
+        description="Searches hotel documents for details like rooms, availability, meals, pricing, and amenities.",
+    )
 
 # Define the ReAct prompt template
 prompt = PromptTemplate.from_template("""

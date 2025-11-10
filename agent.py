@@ -117,28 +117,77 @@ def _retriever_tool_func(query: str) -> str:
     We intentionally return a plain string so the agent can observe the
     retrieved content. Limit to the top-k results for brevity.
     """
-    # Call retriever with broad compatibility: synchronous or async methods may
-    # be present depending on LangChain version. Try several common names.
-    if hasattr(retriever, "get_relevant_documents"):
-        docs = retriever.get_relevant_documents(query)
-    elif hasattr(retriever, "aget_relevant_documents"):
-        docs = asyncio.run(retriever.aget_relevant_documents(query))
-    elif hasattr(retriever, "get_documents"):
-        docs = retriever.get_documents(query)
-    elif hasattr(retriever, "aget_documents"):
-        docs = asyncio.run(retriever.aget_documents(query))
-    elif hasattr(retriever, "retrieve"):
-        docs = retriever.retrieve(query)
-    elif hasattr(retriever, "aretrieve"):
-        docs = asyncio.run(retriever.aretrieve(query))
-    else:
-        # If none of the common methods exist, raise a clear error to help
-        # diagnose the runtime API available in the deployed LangChain.
-        raise AttributeError(
-            "Retriever does not expose a compatible retrieval method. "
-            "Checked: get_relevant_documents, aget_relevant_documents, get_documents, "
-            "aget_documents, retrieve, aretrieve"
-        )
+    # Dynamically probe for the correct retrieval method and call it.
+    # Try a broad list of candidate method names (sync + async). For async
+    # methods use asyncio.run to execute them.
+    candidate_methods = [
+        "get_relevant_documents",
+        "aget_relevant_documents",
+        "get_documents",
+        "aget_documents",
+        "retrieve",
+        "aretrieve",
+        # Additional names used by some retriever implementations
+        "search",
+        "search_documents",
+        "search_results",
+        "search_with_relevance",
+        "search_results_with_scores",
+    ]
+
+    def _normalize_result(res):
+        # If it's already a list of docs, return it
+        if isinstance(res, (list, tuple)):
+            return list(res)
+        # If object has .documents or .results attribute, extract
+        if hasattr(res, "documents"):
+            return list(getattr(res, "documents"))
+        if hasattr(res, "results"):
+            return list(getattr(res, "results"))
+        # If it's a dict with 'documents' key
+        if isinstance(res, dict) and "documents" in res:
+            return list(res["documents"])
+        # Fallback: wrap the returned object
+        return [res]
+
+    last_exception = None
+    for name in candidate_methods:
+        if hasattr(retriever, name):
+            method = getattr(retriever, name)
+            try:
+                if name.startswith("a"):
+                    res = asyncio.run(method(query))
+                else:
+                    # Try common signatures defensively
+                    try:
+                        res = method(query)
+                    except TypeError:
+                        # Some methods accept (query, top_k) or (query, k)
+                        top_k = getattr(retriever, "top_k", 4)
+                        try:
+                            res = method(query, top_k)
+                        except TypeError:
+                            try:
+                                res = method(query, k=top_k)
+                            except TypeError:
+                                # last resort: call without args
+                                res = method()
+                docs = _normalize_result(res)
+                # Ensure docs is a list-like of document-like objects
+                return docs
+            except Exception as e:
+                last_exception = e
+                # try next candidate
+                continue
+
+    # If we get here nothing worked; raise a helpful error including last exception
+    msg = (
+        "Retriever does not expose a compatible retrieval method. Checked: "
+        + ", ".join(candidate_methods)
+    )
+    if last_exception:
+        msg += f"; last error: {last_exception}"
+    raise AttributeError(msg)
 
     # Take up to top_k results (AzureAISearchRetriever already respects top_k,
     # but defensively limit here)

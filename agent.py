@@ -12,7 +12,14 @@ try:
     from langchain.tools import Tool  # type: ignore
 except Exception:
     Tool = None
-from langchain.agents import create_react_agent, AgentExecutor
+# Agent factory: try to import create_react_agent (older/newer LangChain),
+# otherwise fall back to initialize_agent + AgentType which exists in other releases.
+try:
+    from langchain.agents import create_react_agent, AgentExecutor
+    _USE_CREATE_REACT = True
+except Exception:
+    from langchain.agents import initialize_agent, AgentType, AgentExecutor
+    _USE_CREATE_REACT = False
 from langchain.prompts import PromptTemplate
 
 from scripts.browser_console import console_log
@@ -127,20 +134,29 @@ If no tools are needed, write the Final Answer directly and do NOT emit any 'Act
 # Set up tools
 tools = [retrieval_tool]
 
-# Create the ReAct agent
-agent = create_react_agent(llm, tools, prompt)
-
-# Create the agent executor with additional error handling
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,  # Set to False if you don't want verbose output
-    handle_parsing_errors=True,
-    # Limits were causing the agent to stop early in some queries. Increase
-    # these so longer-retrieval/chain runs can complete. Adjust as needed.
-    max_iterations=40,  # Limit iterations to prevent infinite loops
-    max_execution_time=120  # Limit execution time (in seconds) to prevent hangs
-)
+# Create the ReAct agent (robust to different LangChain versions)
+if _USE_CREATE_REACT:
+    agent = create_react_agent(llm, tools, prompt)
+    agent_executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=40,
+        max_execution_time=120,
+    )
+else:
+    # initialize_agent returns an AgentExecutor-like object already
+    # Use ZERO_SHOT_REACT_DESCRIPTION to approximate ReAct behavior.
+    agent_executor = initialize_agent(
+        tools,
+        llm,
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=40,
+        max_execution_time=120,
+    )
 
 # Function to run agent
 def generate_quotation(query):

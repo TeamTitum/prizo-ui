@@ -226,9 +226,9 @@ except Exception:
     pass
 
 # Determine whether we have a usable agent executor (some LangChain versions return
-# an AgentExecutor via initialize_agent directly). If `agent_executor` exists above,
-# we'll use it; otherwise fall back to a simple retrieval + LLM call.
-_USE_AGENT_EXECUTOR = 'agent_executor' in globals()
+# an AgentExecutor via initialize_agent directly). If `agent_executor` exists above
+# and is not None, we'll use it; otherwise fall back to a simple retrieval + LLM call.
+_USE_AGENT_EXECUTOR = ('agent_executor' in globals()) and (globals().get('agent_executor') is not None)
 
 
 def _get_docs_for_query(q: str, limit: int = 4):
@@ -253,7 +253,18 @@ def generate_quotation(query: str) -> str:
     """
     if _USE_AGENT_EXECUTOR:
         try:
-            response = agent_executor.invoke({"input": query})
+            # Agent executors across LangChain versions expose different call APIs.
+            # Try common invocation methods in order: invoke(dict), run(str), callable()
+            if hasattr(agent_executor, "invoke"):
+                response = agent_executor.invoke({"input": query})
+            elif hasattr(agent_executor, "run"):
+                # run usually accepts a plain string
+                response = agent_executor.run(query)
+            elif callable(agent_executor):
+                # some initializers return a callable
+                response = agent_executor({"input": query})
+            else:
+                raise RuntimeError("Agent executor found but has no known call method")
             console_log("response from agent_executor", level="info")
             console_log(response, level="info")
             if isinstance(response, dict):

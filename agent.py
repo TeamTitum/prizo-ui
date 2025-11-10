@@ -101,6 +101,16 @@ retriever = AzureAISearchRetriever(
 print("Inside the agent.py")
 console_log("Inside the agent.py", level="info")
 
+# Diagnostic: log retriever type and available attributes to help debug API differences
+try:
+    retriever_attrs = [a for a in dir(retriever) if not a.startswith("__")]
+    console_log({"retriever_type": str(type(retriever)), "attrs": retriever_attrs}, level="info")
+    print("Retriever type:", type(retriever))
+    print("Retriever attrs:", retriever_attrs)
+except Exception as _e:
+    # Best-effort diagnostics; don't fail startup
+    print("Could not probe retriever attributes:", _e)
+
 def _retriever_tool_func(query: str) -> str:
     """Run the retriever and return a short joined text result.
 

@@ -35,6 +35,17 @@ from langchain.prompts import PromptTemplate
 
 from scripts.browser_console import console_log
 
+# Print LangChain version to logs to help diagnosing runtime API differences
+try:
+    import langchain
+    print("langchain version:", getattr(langchain, "__version__", "unknown"))
+    try:
+        console_log(f"langchain version: {getattr(langchain, '__version__', 'unknown')}", level="info")
+    except Exception:
+        pass
+except Exception:
+    print("langchain not importable at module import time")
+
 load_dotenv()
 
 # Initialize Azure OpenAI LLM with stop parameter explicitly set to None

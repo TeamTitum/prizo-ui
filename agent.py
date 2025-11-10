@@ -17,9 +17,20 @@ except Exception:
 try:
     from langchain.agents import create_react_agent, AgentExecutor
     _USE_CREATE_REACT = True
+    _USE_INITIALIZE = False
 except Exception:
-    from langchain.agents import initialize_agent, AgentType, AgentExecutor
-    _USE_CREATE_REACT = False
+    try:
+        from langchain.agents import initialize_agent, AgentType, AgentExecutor
+        _USE_CREATE_REACT = False
+        _USE_INITIALIZE = True
+    except Exception:
+        # No agent factories available in this LangChain build — we'll
+        # operate in fallback mode (retriever + direct LLM calls).
+        _USE_CREATE_REACT = False
+        _USE_INITIALIZE = False
+        AgentExecutor = None
+        initialize_agent = None
+        AgentType = None
 from langchain.prompts import PromptTemplate
 
 from scripts.browser_console import console_log

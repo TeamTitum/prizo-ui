@@ -1,139 +1,170 @@
 import os
+import asyncio
+import time
+from typing import List, Any
 from dotenv import load_dotenv
+
+# LangChain wrappers (may vary by environment)
 from langchain_openai import AzureChatOpenAI
 from langchain_community.retrievers import AzureAISearchRetriever
-from langchain.tools.retriever import create_retriever_tool
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain.prompts import PromptTemplate
+
+from scripts.browser_console import console_log
 
 load_dotenv()
 
-# Tunable limits for agent runs. Increase these if your queries require more
-# steps or the retriever/LLM calls take longer.
-MAX_ITERATIONS = 200
-MAX_EXECUTION_TIME = 600  # seconds
+# Configurable LLM / retriever
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "800"))
 
-# Initialize Azure OpenAI LLM with stop parameter explicitly set to None
+# Initialize LLM
 llm = AzureChatOpenAI(
-    azure_endpoint=os.getenv('AZURE_OPENAI_ENDPOINT'),
-    api_key=os.getenv('AZURE_OPENAI_API_KEY'),
-    api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
-    deployment_name=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
-    temperature=0.9,
-    max_tokens=800,
-   
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    deployment_name=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+    temperature=LLM_TEMPERATURE,
+    max_tokens=LLM_MAX_TOKENS,
 )
 
-# Initialize retriever synchronously
+# Initialize retriever
 retriever = AzureAISearchRetriever(
     content_key="content",
-    top_k=3,
-    index_name=os.getenv('AZURE_SEARCH_INDEX_NAME'),
-    service_name=os.getenv('AZURE_SEARCH_SERVICE_NAME'),
-    api_key=os.getenv('AZURE_SEARCH_KEY'),
-    api_version="2024-05-01-preview"
+    top_k=int(os.getenv("RETRIEVER_TOP_K", "4")),
+    index_name=os.getenv("AZURE_SEARCH_INDEX_NAME"),
+    service_name=os.getenv("AZURE_SEARCH_SERVICE_NAME"),
+    api_key=os.getenv("AZURE_SEARCH_KEY"),
+    api_version=os.getenv("AZURE_SEARCH_API_VERSION", "2024-05-01-preview"),
 )
 
-# Debug: Test retriever
-print("Testing retriever...")
+# Diagnostic logging
 try:
-    test_docs = retriever.invoke("Known hotels")  # Test query
-    if test_docs:
-        print(f"Retrieved {len(test_docs)} documents:")
-        for doc in test_docs:
-            print(f"- {doc.page_content[:200]}...")
-    else:
-        print("No documents retrieved. Check index or query.")
-except Exception as e:
-    print(f"Retriever error: {str(e)}")
+    import langchain
+    console_log({"langchain_version": getattr(langchain, "__version__", "unknown")}, level="info")
+except Exception:
+    pass
 
-retrieval_tool = create_retriever_tool(
-    retriever,
-    "hotel_docs_retriever",
-    "Searches hotel documents for details like rooms, availability, meals, pricing, and amenities."
-)
+console_log({"retriever_type": str(type(retriever)), "attrs": [a for a in dir(retriever) if not a.startswith("__")]}, level="info")
 
-# Define the ReAct prompt template
-prompt = PromptTemplate.from_template("""
-Answer the following questions as best you can. You have access to the following tools:
+# Candidate retriever method names to try (sync and async)
+CANDIDATE_METHODS = [
+    "get_relevant_documents",
+    "aget_relevant_documents",
+    "get_documents",
+    "aget_documents",
+    "retrieve",
+    "aretrieve",
+    "search",
+    "search_documents",
+    "search_results",
+]
 
-{tools}
-Include the document reference if available. 
-Use the following format:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+def _call_retriever(query: str, top_k: int = 4) -> List[Any]:
+    """Call the underlying retriever using a compatible method and normalize results.
 
-Begin!
+    Tries several common sync/async method names, different signatures, and
+    normalizes the result into a list of document-like objects.
+    """
+    last_exc = None
 
-Question: {input}
-Thought: {agent_scratchpad}
-""")
+    def _normalize(res):
+        if isinstance(res, (list, tuple)):
+            return list(res)
+        if hasattr(res, "documents"):
+            return list(getattr(res, "documents"))
+        if hasattr(res, "results"):
+            return list(getattr(res, "results"))
+        if isinstance(res, dict) and "documents" in res:
+            return list(res["documents"])
+        return [res]
 
-# Set up tools
-tools = [retrieval_tool]
+    for name in CANDIDATE_METHODS:
+        if hasattr(retriever, name):
+            method = getattr(retriever, name)
+            try:
+                if name.startswith("a"):
+                    res = asyncio.run(method(query))
+                else:
+                    try:
+                        res = method(query)
+                    except TypeError:
+                        # try common alternative signatures
+                        try:
+                            res = method(query, top_k)
+                        except TypeError:
+                            try:
+                                res = method(query, k=top_k)
+                            except TypeError:
+                                res = method()
+                docs = _normalize(res)
+                return docs
+            except Exception as e:
+                last_exc = e
+                continue
 
-# Create the ReAct agent
-agent = create_react_agent(llm, tools, prompt)
+    raise AttributeError(
+        "Retriever does not expose a compatible retrieval method. Checked: "
+        + ", ".join(CANDIDATE_METHODS)
+        + (f"; last error: {last_exc}" if last_exc else "")
+    )
 
-# Create the agent executor with additional error handling
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,  # Set to False if you don't want verbose output
-    handle_parsing_errors=True,
-    max_iterations=MAX_ITERATIONS,  # Limit iterations to prevent infinite loops
-    max_execution_time=MAX_EXECUTION_TIME  # Limit execution time (in seconds) to prevent hangs
-)
 
-# Function to run agent
-def generate_quotation(query):
+def _build_prompt_from_docs(query: str, docs: List[Any]) -> str:
+    parts = []
+    for d in docs:
+        text = getattr(d, "page_content", None) or getattr(d, "content", None) or str(d)
+        parts.append(text)
+    context = "\n---\n".join(parts) if parts else "(no documents found)"
+    prompt = (
+        "You are Arabiers AI Agent, a concise hotel and tourism expert. "
+        "Answer the user's question using the provided context from hotel documents. "
+        "If the information isn't in the documents, answer concisely from general knowledge.\n\n"
+        f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer concisely:"
+    )
+    return prompt
+
+
+def _extract_final_answer(text: str) -> str:
+    # Try to pull the part after 'Final Answer:' if present
+    import re
+
+    m = re.search(r"final answer:\s*(.*)$", text, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return text.strip()
+
+
+def generate_quotation(query: str) -> str:
+    """Retrieve documents and ask the LLM to answer concisely. Returns a string."""
     try:
-        import time as _time
-        start = _time.time()
-        # Invoke agent using common API
-        if hasattr(agent_executor, "invoke"):
-            response = agent_executor.invoke({"input": query})
-        elif hasattr(agent_executor, "run"):
-            response = agent_executor.run(query)
-        elif callable(agent_executor):
-            response = agent_executor({"input": query})
-        else:
-            raise RuntimeError("Agent executor has no known invocation method")
-
-        duration = _time.time() - start
-        print(f"Agent run time: {duration:.2f}s")
-
-        # Normalize response
-        if isinstance(response, dict):
-            out = response.get('output') or response.get('output_text') or str(response)
-        else:
-            out = str(response)
-
-        # If agent reports stopping due to limits, return helpful guidance
-        low = out.lower()
-        if "iteration limit" in low or "time limit" in low:
-            return (
-                out
-                + "\n\nNote: The agent stopped due to its iteration/time limit. "
-                f"Increase MAX_ITERATIONS ({MAX_ITERATIONS}) or MAX_EXECUTION_TIME ({MAX_EXECUTION_TIME}) in agent.py and redeploy if you expect longer runs."
-            )
-
-        print("Bot:", out)
-        return out
+        docs = _call_retriever(query, top_k=int(os.getenv("RETRIEVER_TOP_K", "4")))
     except Exception as e:
-        em = str(e)
-        # Friendly message if the exception indicates an iteration/time stop
-        if "iteration limit" in em.lower() or "time limit" in em.lower():
-            return (
-                f"Arabiers AI Agent encountered an execution limit: {em}. "
-                f"Consider increasing MAX_ITERATIONS ({MAX_ITERATIONS}) or MAX_EXECUTION_TIME ({MAX_EXECUTION_TIME}) in agent.py and retrying."
-            )
-        return f"Prizo AI encountered an issue: {em}. Please try rephrasing your question."
-  
+        console_log({"retriever_error": str(e)}, level="error")
+        docs = []
+
+    prompt = _build_prompt_from_docs(query, docs)
+
+    # Call LLM
+    try:
+        # Prefer predict if available
+        if hasattr(llm, "predict"):
+            out = llm.predict(prompt)
+        else:
+            # Some wrappers expose generate
+            res = llm.generate([prompt])
+            try:
+                out = res.generations[0][0].text
+            except Exception:
+                out = str(res)
+    except Exception as e:
+        console_log({"llm_error": str(e)}, level="error")
+        return f"Arabiers AI Agent encountered an issue calling the LLM: {e}"
+
+    final = _extract_final_answer(out)
+    console_log({"final_answer": final}, level="info")
+    return final
+
+
+if __name__ == "__main__":
+    # quick smoke test
+    print(generate_quotation("Who are you?"))

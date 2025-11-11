@@ -7,6 +7,21 @@ import os
 import time
 from scripts.browser_console import console_log
 from agent import generate_quotation
+from scripts.create_logo import ensure_logo
+
+# Ensure logo file exists (creates placeholder if missing) and set page title/favicon
+try:
+    ensure_logo()
+except Exception:
+    # don't fail if logo creation fails
+    pass
+
+# Must set page config before other Streamlit calls that affect the page
+try:
+    st.set_page_config(page_title="Arabiers AI Agent", page_icon="assets/favicon.ico")
+except Exception:
+    # ignore if running in an environment that disallows changing page config
+    pass
 
 # ──────────────────────────────────────────────────────────────
 # Session State

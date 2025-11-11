@@ -8,13 +8,18 @@ from langchain.prompts import PromptTemplate
 
 load_dotenv()
 
+# Tunable limits for agent runs. Increase these if your queries require more
+# steps or the retriever/LLM calls take longer.
+MAX_ITERATIONS = 200
+MAX_EXECUTION_TIME = 600  # seconds
+
 # Initialize Azure OpenAI LLM with stop parameter explicitly set to None
 llm = AzureChatOpenAI(
     azure_endpoint=os.getenv('AZURE_OPENAI_ENDPOINT'),
     api_key=os.getenv('AZURE_OPENAI_API_KEY'),
     api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
     deployment_name=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
-  temperature=0.9,
+    temperature=0.9,
     max_tokens=800,
    
 )
@@ -83,29 +88,52 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=True,  # Set to False if you don't want verbose output
     handle_parsing_errors=True,
-    max_iterations=20,  # Limit iterations to prevent infinite loops
-    max_execution_time=20  # Limit execution time (in seconds) to prevent hangs
+    max_iterations=MAX_ITERATIONS,  # Limit iterations to prevent infinite loops
+    max_execution_time=MAX_EXECUTION_TIME  # Limit execution time (in seconds) to prevent hangs
 )
 
 # Function to run agent
 def generate_quotation(query):
     try:
-        response = agent_executor.invoke({"input": query})
-        print("Bot:", response['output'])
-        return response['output']
+        import time as _time
+        start = _time.time()
+        # Invoke agent using common API
+        if hasattr(agent_executor, "invoke"):
+            response = agent_executor.invoke({"input": query})
+        elif hasattr(agent_executor, "run"):
+            response = agent_executor.run(query)
+        elif callable(agent_executor):
+            response = agent_executor({"input": query})
+        else:
+            raise RuntimeError("Agent executor has no known invocation method")
+
+        duration = _time.time() - start
+        print(f"Agent run time: {duration:.2f}s")
+
+        # Normalize response
+        if isinstance(response, dict):
+            out = response.get('output') or response.get('output_text') or str(response)
+        else:
+            out = str(response)
+
+        # If agent reports stopping due to limits, return helpful guidance
+        low = out.lower()
+        if "iteration limit" in low or "time limit" in low:
+            return (
+                out
+                + "\n\nNote: The agent stopped due to its iteration/time limit. "
+                f"Increase MAX_ITERATIONS ({MAX_ITERATIONS}) or MAX_EXECUTION_TIME ({MAX_EXECUTION_TIME}) in agent.py and redeploy if you expect longer runs."
+            )
+
+        print("Bot:", out)
+        return out
     except Exception as e:
-        return f"Prizo AI encountered an issue: {str(e)}. Please try rephrasing your question."
-    
-# Interactive bot loop
-# print("Starting interactive bot. Type 'exit' to quit.")
-# while True:
-#     user_input = input("You: ")
-#     if user_input.lower() == 'exit':
-#         print("Exiting bot.")
-#         break
-#     try:
-#         response = agent_executor.invoke({"input": user_input})
-#         print("Bot:", response['output'])
-#     except Exception as e:
-#         print(f"Error during execution: {str(e)}")
-#         print("Please check your Azure OpenAI deployment or configuration.")
+        em = str(e)
+        # Friendly message if the exception indicates an iteration/time stop
+        if "iteration limit" in em.lower() or "time limit" in em.lower():
+            return (
+                f"Arabiers AI Agent encountered an execution limit: {em}. "
+                f"Consider increasing MAX_ITERATIONS ({MAX_ITERATIONS}) or MAX_EXECUTION_TIME ({MAX_EXECUTION_TIME}) in agent.py and retrying."
+            )
+        return f"Prizo AI encountered an issue: {em}. Please try rephrasing your question."
+  

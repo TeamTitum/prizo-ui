@@ -14,7 +14,7 @@ def _chunk_text(text: str, max_chars: int = 3000):
     """Yield successive chunks of `text` of up to `max_chars` characters.
 
     This is a simple heuristic to avoid overflowing a single PDF page.
-    It prefers splitting at newline boundaries when possible.
+    It prefers splitting at newline boundaries when possible.  
     """
     if not text:
         return [""]
@@ -37,7 +37,7 @@ def _chunk_text(text: str, max_chars: int = 3000):
 def generate_pdf(text: str, pdf_path: str = "quote.pdf") -> None:
     """Generate a PDF file from `text` and save it to `pdf_path`.
 
-    Raises exceptions from PyMuPDF upward so callers can handle/display
+    Raises exceptions from PyMuPDF upward  so callers can handle/display
     errors.
     """
     # Split into chunks to place across pages

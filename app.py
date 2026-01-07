@@ -54,14 +54,14 @@ with cols[1]:
         pass
     st.markdown("<div class='arabiers-header'>Arabiers AI Agent</div>", unsafe_allow_html=True)
 
-st.markdown("Ask about **Sri Lanka tourism and hotels** Eg. Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board.")
+st.markdown("Ask about **Sri Lanka tourism and hotels** Eg. Compare 5-star hotel rates in Kandy for July long weekends.")
 
 # ──────────────────────────────────────────────────────────────
 # Input
 # ──────────────────────────────────────────────────────────────
 question = st.text_input(
     "Your question",
-    placeholder="e.g., Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board",
+    placeholder="e.g., Compare 5-star hotel rates in Kandy for July long weekends.",
     key="question_input"
 )
 

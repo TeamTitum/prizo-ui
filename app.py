@@ -8,7 +8,6 @@ import time
 from scripts.browser_console import console_log
 from agent import generate_quotation
 from scripts.create_logo import ensure_logo
-from scripts.generate_pdf import generate_pdf
 
 # Ensure logo file exists (creates placeholder if missing) and set page title/favicon
 try:
@@ -33,10 +32,6 @@ if "question_history" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = ""
 
-# Show the PDF download area once a quotation is requested or returned
-if "show_pdf_button" not in st.session_state:
-    st.session_state.show_pdf_button = False
-
 # ──────────────────────────────────────────────────────────────
 # Load CSS
 # ──────────────────────────────────────────────────────────────
@@ -59,7 +54,7 @@ with cols[1]:
         pass
     st.markdown("<div class='arabiers-header'>Arabiers AI Agent</div>", unsafe_allow_html=True)
 
-st.markdown("Ask about **Sri Lanka tourism and hotes** Eg. Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board.")
+st.markdown("Ask about **Sri Lanka tourism and hotels** Eg. Find the 2025 contract rate for Cinnamon Bentota for 2 adults, half board.")
 
 # ──────────────────────────────────────────────────────────────
 # Input
@@ -75,8 +70,6 @@ question = st.text_input(
 # ──────────────────────────────────────────────────────────────
 if st.button("Ask Arabiers AI", type="primary"):
     if question.strip():
-        # Ensure the PDF download area is visible once the user requests a quotation
-        st.session_state.show_pdf_button = True
         with st.spinner("Arabiers AI is searching documents and calculating..."):
             try:
                 response = generate_quotation(question.strip())
@@ -100,29 +93,15 @@ if st.session_state.last_response:
 
     # PDF Download
     pdf_path = "quote.pdf"
-    # Show the download area when a quotation was requested or returned
-    if st.session_state.get("show_pdf_button", False):
-        if os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    label="Download PDF Quotation",
-                    data=f,
-                    file_name=f"Arabiers_AI_Quote_{time.strftime('%Y%m%d_%H%M')}.pdf",
-                    mime="application/pdf",
-                    type="secondary"
-                )
-        else:
-            # If the PDF doesn't exist yet, offer a button to generate it from the last response
-            if st.button("Generate PDF Quotation", key="generate_pdf"):
-                try:
-                    text = st.session_state.get("last_response", "") or ""
-                    generate_pdf(text, pdf_path)
-                    st.success("PDF quotation generated — you can now download it.")
-                    st.session_state.show_pdf_button = True
-                    # Rerun so the download_button appears with the new file
-                    st.experimental_rerun()
-                except Exception as e:
-                    st.error(f"Failed to generate PDF: {e}")
+    if os.path.exists(pdf_path):
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Download PDF Quotation",
+                data=f,
+                file_name=f"Arabiers_AI_Quote_{time.strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                type="secondary"
+            )
 
     # Auto-scroll
     st.markdown(
